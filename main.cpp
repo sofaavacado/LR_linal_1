@@ -1,4 +1,4 @@
-﻿#define _USE_MATH_DEFINES
+#define _USE_MATH_DEFINES
 #define NOMINMAX
 #include <windows.h>
 #include <GL/gl.h>
@@ -34,7 +34,74 @@ Vec3 cross(const Vec3& a, const Vec3& b) {
     return Vec3(a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x);
 }
 
-// Базовый класс для параметрических поверхностей
+// Матрица 4x4 для преобразований
+struct Matrix4 {
+    float m[4][4];
+    Matrix4() {
+        for (int i = 0; i < 4; ++i)
+            for (int j = 0; j < 4; ++j)
+                m[i][j] = (i == j) ? 1.0f : 0.0f;
+    }
+
+    // Умножение матрицы на вектор
+    Vec3 multiply(const Vec3& v) const {
+        float x = m[0][0] * v.x + m[0][1] * v.y + m[0][2] * v.z + m[0][3];
+        float y = m[1][0] * v.x + m[1][1] * v.y + m[1][2] * v.z + m[1][3];
+        float z = m[2][0] * v.x + m[2][1] * v.y + m[2][2] * v.z + m[2][3];
+        return Vec3(x, y, z);
+    }
+
+    // Умножение матриц
+    Matrix4 operator*(const Matrix4& other) const {
+        Matrix4 result;
+        for (int i = 0; i < 4; ++i) {
+            for (int j = 0; j < 4; ++j) {
+                result.m[i][j] = 0;
+                for (int k = 0; k < 4; ++k) {
+                    result.m[i][j] += m[i][k] * other.m[k][j];
+                }
+            }
+        }
+        return result;
+    }
+};
+
+// Создание матрицы вращения вокруг оси X
+Matrix4 createRotationX(float angle) {
+    float rad = angle * static_cast<float>(M_PI) / 180.0f;
+    float c = cos(rad);
+    float s = sin(rad);
+    Matrix4 mat;
+    mat.m[1][1] = c;
+    mat.m[1][2] = -s;
+    mat.m[2][1] = s;
+    mat.m[2][2] = c;
+    return mat;
+}
+
+// Создание матрицы вращения вокруг оси Y
+Matrix4 createRotationY(float angle) {
+    float rad = angle * static_cast<float>(M_PI) / 180.0f;
+    float c = cos(rad);
+    float s = sin(rad);
+    Matrix4 mat;
+    mat.m[0][0] = c;
+    mat.m[0][2] = s;
+    mat.m[2][0] = -s;
+    mat.m[2][2] = c;
+    return mat;
+}
+
+// Создание матрицы трансляции
+Matrix4 createTranslation(float x, float y, float z) {
+    Matrix4 mat;
+    mat.m[0][3] = x;
+    mat.m[1][3] = y;
+    mat.m[2][3] = z;
+    return mat;
+}
+
+// Класс для параметрических поверхностей
 class ParametricSurface {
 protected:
     float uMin, uMax, vMin, vMax;
@@ -44,7 +111,7 @@ protected:
 public:
     ParametricSurface(float uMin_, float uMax_, float vMin_, float vMax_, int uSteps_, int vSteps_)
         : uMin(uMin_), uMax(uMax_), vMin(vMin_), vMax(vMax_), uSteps(uSteps_), vSteps(vSteps_) {
-        parameters = { 1.0f, 0.5f }; 
+        parameters = { 1.0f, 0.5f };
     }
 
     virtual ~ParametricSurface() {}
@@ -54,7 +121,6 @@ public:
     float getParameter(int index) const { return parameters[index]; }
     void setParameter(int index, float value) { parameters[index] = value; }
 
-    // Геттеры для доступа к защищённым полям
     float getUMin() const { return uMin; }
     float getUMax() const { return uMax; }
     float getVMin() const { return vMin; }
@@ -68,13 +134,13 @@ class MoebiusStrip : public ParametricSurface {
 public:
     MoebiusStrip(float uMin_, float uMax_, float vMin_, float vMax_, int uSteps_, int vSteps_)
         : ParametricSurface(uMin_, uMax_, vMin_, vMax_, uSteps_, vSteps_) {
-        parameters[0] = 1.0f; 
+        parameters[0] = 1.0f;
         parameters[1] = 0.5f;
     }
 
     Vec3 computePoint(float u, float v) const override {
-        float alpha = parameters[0]; 
-        float beta = parameters[1];  
+        float alpha = parameters[0];
+        float beta = parameters[1];
         float x = (alpha + v * cos(u / 2.0f)) * cos(u);
         float y = (alpha + v * cos(u / 2.0f)) * sin(u);
         float z = beta * v * sin(u / 2.0f);
@@ -103,7 +169,6 @@ private:
 public:
     SurfaceEngine(ParametricSurface* surface_)
         : surface(surface_), angleX(0.0f), angleY(0.0f) {
-        // Инициализация анимации параметров для ленты Мёбиуса
         paramAnimations.emplace_back(1.0f, 3.0f, 0.2f); // alpha
         paramAnimations.emplace_back(0.5f, 2.0f, 0.1f); // beta
         computePoints();
@@ -116,12 +181,10 @@ public:
         normals.clear();
         triangles.clear();
 
-        // Обновляем параметры поверхности
         for (size_t i = 0; i < paramAnimations.size(); ++i) {
             surface->setParameter(static_cast<int>(i), paramAnimations[i].value);
         }
 
-        // Генерация точек
         float du = (surface->getUMax() - surface->getUMin()) / (surface->getUSteps() - 1);
         float dv = (surface->getVMax() - surface->getVMin()) / (surface->getVSteps() - 1);
 
@@ -133,7 +196,6 @@ public:
             }
         }
 
-        // Формирование треугольников и нормалей
         for (size_t i = 0; i < static_cast<size_t>(surface->getUSteps() - 1); i++) {
             for (size_t j = 0; j < static_cast<size_t>(surface->getVSteps() - 1); j++) {
                 size_t idx = i * static_cast<size_t>(surface->getVSteps()) + j;
@@ -158,7 +220,6 @@ public:
     }
 
     void update(float deltaTime) {
-        // Анимация параметров
         for (auto& param : paramAnimations) {
             param.value += param.direction * param.step * deltaTime * 2.0f;
             if (param.value >= param.maxVal) {
@@ -173,7 +234,6 @@ public:
 
         computePoints();
 
-        // Обновление вращения
         angleX += 30.0f * deltaTime;
         angleY += 30.0f * deltaTime;
     }
@@ -182,11 +242,12 @@ public:
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glLoadIdentity();
 
-        glTranslatef(0.0f, 0.0f, -7.0f);
-        glRotatef(45.0f, 1.0f, 0.0f, 0.0f);
-        glRotatef(-30.0f, 0.0f, 1.0f, 0.0f);
-        glRotatef(angleX, 1.0f, 0.0f, 0.0f);
-        glRotatef(angleY, 0.0f, 1.0f, 0.0f);
+        // Создаем матрицу преобразования
+        Matrix4 transform = createTranslation(0.0f, 0.0f, -7.0f) *
+            createRotationX(45.0f) *
+            createRotationY(-30.0f) *
+            createRotationX(angleX) *
+            createRotationY(angleY);
 
         std::vector<std::pair<float, int>> sortedTriangles;
         for (size_t i = 0; i < triangles.size(); i++) {
@@ -207,11 +268,12 @@ public:
         for (const auto& triPair : sortedTriangles) {
             int triIdx = triPair.second;
             const auto& tri = triangles[triIdx];
-            Vec3 p0 = points[tri[0]];
-            Vec3 p1 = points[tri[1]];
-            Vec3 p2 = points[tri[2]];
+            Vec3 p0 = transform.multiply(points[tri[0]]);
+            Vec3 p1 = transform.multiply(points[tri[1]]);
+            Vec3 p2 = transform.multiply(points[tri[2]]);
 
-            Vec3 normal = normals[triIdx];
+            // Пересчитываем нормали с учетом трансформации
+            Vec3 normal = transform.multiply(normals[triIdx]).normalize();
             float depth = (p0.z + p1.z + p2.z) / 3.0f;
 
             float lambert = dot(normal, lightDir);
@@ -274,7 +336,6 @@ int main() {
     glfwMakeContextCurrent(window);
     initOpenGL();
 
-    // Создание ленты Мёбиуса
     ParametricSurface* surface = new MoebiusStrip(0.0f, 2.0f * static_cast<float>(M_PI), -0.5f, 0.5f, 100, 50);
     SurfaceEngine engine(surface);
     double lastTime = glfwGetTime();
